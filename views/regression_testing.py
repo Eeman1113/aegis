@@ -14,12 +14,12 @@ from utils.db import (
     create_test_run, complete_test_run, get_test_runs,
     add_test_result, get_test_results, get_results_summary,
 )
-from utils.aws_integration import check_aws_connection
+from utils.data_source import check_aws_connection
 
 
 def _run_live_checks(run_id: int, region: str, categories: list[str]):
     """Execute real AWS security checks and record results."""
-    from utils.aws_integration import (
+    from utils.data_source import (
         get_iam_users, get_security_groups, get_s3_buckets,
         get_ec2_instances, get_config_compliance,
     )
@@ -95,7 +95,7 @@ def _run_live_checks(run_id: int, region: str, categories: list[str]):
     # Logging & Monitoring
     if "Logging & Monitoring" in categories:
         try:
-            from utils.aws_integration import _client
+            from utils.data_source import _client
             ct_client = _client("cloudtrail", region)
             trails = ct_client.describe_trails().get("trailList", [])
             active_trails = [t for t in trails if t.get("IsMultiRegionTrail", False)]

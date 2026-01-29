@@ -9,7 +9,7 @@ from datetime import datetime
 
 from config import QUARTERS, YEARS, AWS_REGIONS, SEVERITY_LEVELS
 from utils.db import get_test_runs, get_test_results, get_results_summary, init_db
-from utils.aws_integration import (
+from utils.data_source import (
     get_security_hub_findings,
     get_guardduty_findings,
     get_config_compliance,

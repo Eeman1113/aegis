@@ -5,7 +5,7 @@ import pandas as pd
 import plotly.express as px
 
 from config import AWS_REGIONS
-from utils.aws_integration import (
+from utils.data_source import (
     get_organization_accounts,
     check_aws_connection,
     get_security_hub_findings,

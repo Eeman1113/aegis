@@ -5,7 +5,7 @@ import pandas as pd
 import plotly.express as px
 
 from config import AWS_REGIONS, SEVERITY_COLORS
-from utils.aws_integration import (
+from utils.data_source import (
     get_ec2_instances,
     get_security_groups,
     get_s3_buckets,

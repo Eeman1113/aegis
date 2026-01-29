@@ -6,7 +6,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from config import SEVERITY_LEVELS, SEVERITY_COLORS, AWS_REGIONS
-from utils.aws_integration import (
+from utils.data_source import (
     get_security_hub_findings,
     get_guardduty_findings,
 )

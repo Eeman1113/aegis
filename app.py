@@ -2,12 +2,13 @@
 
 Main Streamlit entry point with sidebar navigation.
 Secured with login gate, AWS credential gate, and audit logging.
+Supports Sample Mode with realistic mock data.
 """
 
 import streamlit as st
 
 from config import APP_TITLE, APP_NAME, APP_NAME_JP, AWS_REGIONS, AWS_REGION
-from utils.aws_integration import check_aws_connection
+from utils.aws_integration import check_aws_connection as _real_check
 from utils.auth import check_login, logout
 from utils.audit_log import log_event
 from utils.db import init_db
@@ -27,7 +28,7 @@ if not check_login():
     st.stop()
 
 # ---------------------------------------------------------------------------
-# Gate 2 — AWS Credentials (blocks app until connected)
+# Gate 2 — AWS Credentials OR Sample Mode
 # ---------------------------------------------------------------------------
 if not st.session_state.get("aws_connected"):
     cols = st.columns([1, 2, 1])
@@ -92,8 +93,9 @@ if not st.session_state.get("aws_connected"):
                     st.session_state["aws_session_token"] = session_token
                     st.session_state["aws_region"] = region
                     st.session_state["aws_auth_method"] = "Access Keys (STS Temporary Only)"
+                    st.session_state["sample_mode"] = False
 
-                    conn = check_aws_connection()
+                    conn = _real_check()
                     if conn["connected"]:
                         st.session_state["aws_connected"] = True
                         log_event(
@@ -103,7 +105,6 @@ if not st.session_state.get("aws_connected"):
                         )
                         st.rerun()
                     else:
-                        # Clear bad credentials
                         for k in ["aws_access_key_id", "aws_secret_access_key", "aws_session_token"]:
                             st.session_state.pop(k, None)
                         st.error(f"Connection failed: {conn.get('error', 'Unknown error')}")
@@ -115,12 +116,36 @@ if not st.session_state.get("aws_connected"):
                             "- Verify your IAM user has [STS permissions](https://console.aws.amazon.com/iam/home#/users)"
                         )
 
+        # --- Sample Mode ---
+        st.divider()
+        st.markdown("### Or explore with sample data")
+        st.markdown(
+            "No AWS account? Launch in **Sample Mode** to explore every dashboard "
+            "with realistic, randomized data. No credentials required."
+        )
+        if st.button("Run in Sample Mode", use_container_width=True):
+            st.session_state["sample_mode"] = True
+            st.session_state["aws_connected"] = True
+            log_event(
+                st.session_state.get("auth_user", "unknown"),
+                "sample_mode_start",
+            )
+            st.rerun()
+
     st.stop()
 
 # ---------------------------------------------------------------------------
-# App starts here — AWS is connected
+# App starts here — AWS connected or Sample Mode active
 # ---------------------------------------------------------------------------
 init_db()
+
+is_sample = st.session_state.get("sample_mode", False)
+
+# Seed sample regression data if in sample mode
+if is_sample and not st.session_state.get("_sample_seeded"):
+    from utils.mock_data import seed_sample_regression_data
+    seed_sample_regression_data()
+    st.session_state["_sample_seeded"] = True
 
 # Log session start (only once per session)
 if not st.session_state.get("_session_logged"):
@@ -133,10 +158,15 @@ if not st.session_state.get("_session_logged"):
 st.sidebar.markdown(f"## {APP_NAME} | {APP_NAME_JP}")
 
 # Connection info
-conn = check_aws_connection()
-if conn["connected"]:
-    st.sidebar.success(f"AWS: {conn['account']}")
-    st.sidebar.caption(f"{conn['arn']}")
+if is_sample:
+    st.sidebar.info("Sample Mode")
+    st.sidebar.caption("Viewing realistic demo data")
+else:
+    from utils.data_source import check_aws_connection
+    conn = check_aws_connection()
+    if conn["connected"]:
+        st.sidebar.success(f"AWS: {conn['account']}")
+        st.sidebar.caption(f"{conn['arn']}")
 
 # Logout / Disconnect
 col1, col2 = st.sidebar.columns(2)
@@ -144,12 +174,15 @@ with col1:
     if st.button("Logout", use_container_width=True):
         log_event(st.session_state.get("auth_user", "unknown"), "logout")
         logout()
-        st.session_state.pop("aws_connected", None)
+        for k in ["aws_connected", "sample_mode", "_sample_seeded"]:
+            st.session_state.pop(k, None)
         st.rerun()
 with col2:
-    if st.button("Disconnect", use_container_width=True):
-        log_event(st.session_state.get("auth_user", "unknown"), "aws_disconnect")
-        for k in ["aws_access_key_id", "aws_secret_access_key", "aws_session_token", "aws_connected"]:
+    label = "Exit Sample" if is_sample else "Disconnect"
+    if st.button(label, use_container_width=True):
+        log_event(st.session_state.get("auth_user", "unknown"), "disconnect")
+        for k in ["aws_access_key_id", "aws_secret_access_key", "aws_session_token",
+                   "aws_connected", "sample_mode", "_sample_seeded"]:
             st.session_state.pop(k, None)
         st.rerun()
 
@@ -180,6 +213,9 @@ with cols[1]:
     st.markdown(f"# {APP_NAME}")
     st.markdown(f"### {APP_NAME_JP}")
     st.caption("Enterprise Security & Regression Testing")
+
+if is_sample:
+    st.info("Sample Mode — All data shown is realistic but randomly generated. Connect real AWS credentials to see live data.")
 
 st.divider()
 

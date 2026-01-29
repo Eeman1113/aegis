@@ -6,7 +6,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from config import COMPLIANCE_FRAMEWORKS, AWS_REGIONS, SEVERITY_COLORS
-from utils.aws_integration import (
+from utils.data_source import (
     get_security_hub_findings,
     get_security_hub_standards,
     get_config_compliance,
