@@ -56,7 +56,27 @@ with st.sidebar.expander("AWS Connection", expanded=not st.session_state.get("aw
         help="IAM Roles are the recommended method. Access keys should only be temporary STS credentials.",
     )
 
-    if auth_method == "AWS CLI Profile":
+    if auth_method == "IAM Role / Instance Profile":
+        st.markdown(
+            "**No credentials needed.** Auto-discovered from the "
+            "EC2/ECS instance metadata.\n\n"
+            "**How to set up:**\n"
+            "1. [Create an IAM Role](https://console.aws.amazon.com/iam/home#/roles$new) "
+            "with read-only security permissions\n"
+            "2. [Attach the role to your EC2 instance](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) "
+            "or ECS task\n"
+            "3. Select your region below and you're connected"
+        )
+
+    elif auth_method == "AWS CLI Profile":
+        st.markdown(
+            "**How to set up:**\n"
+            "1. [Install AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)\n"
+            "2. Run `aws configure` or `aws configure sso` in your terminal\n"
+            "3. Find your profiles in `~/.aws/credentials` "
+            "([docs](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html))\n"
+            "4. Enter the profile name below"
+        )
         st.text_input(
             "Profile Name",
             key="aws_cli_profile",
@@ -65,16 +85,32 @@ with st.sidebar.expander("AWS Connection", expanded=not st.session_state.get("aw
         )
 
     elif auth_method == "Access Keys (STS Temporary Only)":
-        st.warning("Only use temporary credentials from `aws sts get-session-token` or SSO. Never paste long-lived IAM keys.")
-        st.text_input("Access Key ID", type="password", key="aws_access_key_id", placeholder="ASIA...")
-        st.text_input("Secret Access Key", type="password", key="aws_secret_access_key")
-        st.text_input("Session Token (required for STS)", type="password", key="aws_session_token")
+        st.warning("Only use temporary credentials. Never paste long-lived IAM keys.")
+        st.markdown(
+            "**How to get temporary credentials:**\n"
+            "1. Open the [IAM Console](https://console.aws.amazon.com/iam/home#/users) "
+            "and find your user\n"
+            "2. Run in your terminal:\n"
+            "   ```\n"
+            "   aws sts get-session-token\n"
+            "   ```\n"
+            "3. Copy the `AccessKeyId`, `SecretAccessKey`, and `SessionToken` from the output\n"
+            "4. Paste them below\n\n"
+            "Or use [SSO login](https://docs.aws.amazon.com/cli/latest/userguide/sso-configure-profile-token.html) "
+            "and copy credentials from your "
+            "[SSO start page](https://docs.aws.amazon.com/singlesignon/latest/userguide/howtogetcredentials.html)."
+        )
+        st.text_input("Step 1 \u2014 Access Key ID", type="password", key="aws_access_key_id", placeholder="ASIA...")
+        st.text_input("Step 2 \u2014 Secret Access Key", type="password", key="aws_secret_access_key")
+        st.text_input("Step 3 \u2014 Session Token", type="password", key="aws_session_token",
+                       help="Required for STS temporary credentials")
 
     st.selectbox(
-        "Default Region",
+        "Region",
         AWS_REGIONS,
         index=AWS_REGIONS.index(AWS_REGION),
         key="aws_region",
+        help="[See all AWS regions](https://docs.aws.amazon.com/general/latest/gr/rande.html)",
     )
 
     st.caption("Credentials are held in server memory for this session only. Never stored to disk.")
