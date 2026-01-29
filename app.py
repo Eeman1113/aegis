@@ -1,7 +1,7 @@
 """Enterprise Security & Quarterly Regression Testing Platform.
 
 Main Streamlit entry point with sidebar navigation.
-Secured with login gate, IAM role / profile / STS auth, and audit logging.
+Secured with login gate, AWS credential gate, and audit logging.
 """
 
 import streamlit as st
@@ -21,12 +21,105 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------------------------
-# Login gate — blocks everything until authenticated
+# Gate 1 — Login
 # ---------------------------------------------------------------------------
 if not check_login():
     st.stop()
 
-# Initialize database
+# ---------------------------------------------------------------------------
+# Gate 2 — AWS Credentials (blocks app until connected)
+# ---------------------------------------------------------------------------
+if not st.session_state.get("aws_connected"):
+    cols = st.columns([1, 2, 1])
+    with cols[1]:
+        st.markdown(f"# {APP_NAME}")
+        st.markdown(f"### {APP_NAME_JP}")
+        st.caption("Enterprise Security & Regression Testing")
+        st.divider()
+
+        st.markdown("### Connect to AWS")
+        st.markdown(
+            "Enter your temporary STS credentials to continue. "
+            "All credentials are held in server memory only and never stored to disk."
+        )
+
+        st.markdown(
+            "**How to get temporary credentials:**\n"
+            "1. Open the [IAM Console](https://console.aws.amazon.com/iam/home#/users) "
+            "and find your user\n"
+            "2. Run in your terminal:\n"
+            "   ```\n"
+            "   aws sts get-session-token\n"
+            "   ```\n"
+            "3. Copy the `AccessKeyId`, `SecretAccessKey`, and `SessionToken` "
+            "from the output and paste below\n\n"
+            "Or copy credentials from your "
+            "[AWS SSO start page](https://docs.aws.amazon.com/singlesignon/latest/userguide/howtogetcredentials.html)"
+        )
+
+        with st.form("aws_creds_form"):
+            access_key = st.text_input(
+                "Step 1 — Access Key ID",
+                type="password",
+                placeholder="ASIA...",
+                help="Starts with ASIA for temporary credentials",
+            )
+            secret_key = st.text_input(
+                "Step 2 — Secret Access Key",
+                type="password",
+                help="From the `aws sts get-session-token` output",
+            )
+            session_token = st.text_input(
+                "Step 3 — Session Token",
+                type="password",
+                help="Required for temporary STS credentials",
+            )
+            region = st.selectbox(
+                "Step 4 — AWS Region",
+                AWS_REGIONS,
+                index=AWS_REGIONS.index(AWS_REGION),
+                help="[See all AWS regions](https://docs.aws.amazon.com/general/latest/gr/rande.html)",
+            )
+
+            submitted = st.form_submit_button("Connect", type="primary", use_container_width=True)
+
+            if submitted:
+                if not access_key or not secret_key:
+                    st.error("Access Key ID and Secret Access Key are required.")
+                else:
+                    st.session_state["aws_access_key_id"] = access_key
+                    st.session_state["aws_secret_access_key"] = secret_key
+                    st.session_state["aws_session_token"] = session_token
+                    st.session_state["aws_region"] = region
+                    st.session_state["aws_auth_method"] = "Access Keys (STS Temporary Only)"
+
+                    conn = check_aws_connection()
+                    if conn["connected"]:
+                        st.session_state["aws_connected"] = True
+                        log_event(
+                            st.session_state.get("auth_user", "unknown"),
+                            "aws_connect",
+                            f"account={conn['account']}",
+                        )
+                        st.rerun()
+                    else:
+                        # Clear bad credentials
+                        for k in ["aws_access_key_id", "aws_secret_access_key", "aws_session_token"]:
+                            st.session_state.pop(k, None)
+                        st.error(f"Connection failed: {conn.get('error', 'Unknown error')}")
+                        st.markdown(
+                            "**Troubleshooting:**\n"
+                            "- Check that all 3 values are copied correctly\n"
+                            "- Ensure the token hasn't expired "
+                            "([default TTL is 12 hours](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_request.html))\n"
+                            "- Verify your IAM user has [STS permissions](https://console.aws.amazon.com/iam/home#/users)"
+                        )
+
+    st.stop()
+
+# ---------------------------------------------------------------------------
+# App starts here — AWS is connected
+# ---------------------------------------------------------------------------
 init_db()
 
 # Log session start (only once per session)
@@ -39,94 +132,26 @@ if not st.session_state.get("_session_logged"):
 # ---------------------------------------------------------------------------
 st.sidebar.markdown(f"## {APP_NAME} | {APP_NAME_JP}")
 
-# Logout button
-if st.sidebar.button("Logout"):
-    log_event(st.session_state.get("auth_user", "unknown"), "logout")
-    logout()
-    st.rerun()
-
-st.sidebar.divider()
-
-# AWS Authentication — secure methods only
-with st.sidebar.expander("AWS Connection", expanded=not st.session_state.get("aws_access_key_id")):
-    auth_method = st.radio(
-        "Authentication Method",
-        ["IAM Role / Instance Profile", "AWS CLI Profile", "Access Keys (STS Temporary Only)"],
-        key="aws_auth_method",
-        help="IAM Roles are the recommended method. Access keys should only be temporary STS credentials.",
-    )
-
-    if auth_method == "IAM Role / Instance Profile":
-        st.markdown(
-            "**No credentials needed.** Auto-discovered from the "
-            "EC2/ECS instance metadata.\n\n"
-            "**How to set up:**\n"
-            "1. [Create an IAM Role](https://console.aws.amazon.com/iam/home#/roles$new) "
-            "with read-only security permissions\n"
-            "2. [Attach the role to your EC2 instance](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) "
-            "or ECS task\n"
-            "3. Select your region below and you're connected"
-        )
-
-    elif auth_method == "AWS CLI Profile":
-        st.markdown(
-            "**How to set up:**\n"
-            "1. [Install AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)\n"
-            "2. Run `aws configure` or `aws configure sso` in your terminal\n"
-            "3. Find your profiles in `~/.aws/credentials` "
-            "([docs](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html))\n"
-            "4. Enter the profile name below"
-        )
-        st.text_input(
-            "Profile Name",
-            key="aws_cli_profile",
-            placeholder="default",
-            help="Profile from ~/.aws/credentials",
-        )
-
-    elif auth_method == "Access Keys (STS Temporary Only)":
-        st.warning("Only use temporary credentials. Never paste long-lived IAM keys.")
-        st.markdown(
-            "**How to get temporary credentials:**\n"
-            "1. Open the [IAM Console](https://console.aws.amazon.com/iam/home#/users) "
-            "and find your user\n"
-            "2. Run in your terminal:\n"
-            "   ```\n"
-            "   aws sts get-session-token\n"
-            "   ```\n"
-            "3. Copy the `AccessKeyId`, `SecretAccessKey`, and `SessionToken` from the output\n"
-            "4. Paste them below\n\n"
-            "Or use [SSO login](https://docs.aws.amazon.com/cli/latest/userguide/sso-configure-profile-token.html) "
-            "and copy credentials from your "
-            "[SSO start page](https://docs.aws.amazon.com/singlesignon/latest/userguide/howtogetcredentials.html)."
-        )
-        st.text_input("Step 1 \u2014 Access Key ID", type="password", key="aws_access_key_id", placeholder="ASIA...")
-        st.text_input("Step 2 \u2014 Secret Access Key", type="password", key="aws_secret_access_key")
-        st.text_input("Step 3 \u2014 Session Token", type="password", key="aws_session_token",
-                       help="Required for STS temporary credentials")
-
-    st.selectbox(
-        "Region",
-        AWS_REGIONS,
-        index=AWS_REGIONS.index(AWS_REGION),
-        key="aws_region",
-        help="[See all AWS regions](https://docs.aws.amazon.com/general/latest/gr/rande.html)",
-    )
-
-    st.caption("Credentials are held in server memory for this session only. Never stored to disk.")
-
-# AWS connection status
+# Connection info
 conn = check_aws_connection()
 if conn["connected"]:
     st.sidebar.success(f"AWS: {conn['account']}")
     st.sidebar.caption(f"{conn['arn']}")
-    if not st.session_state.get("_aws_logged"):
-        log_event(st.session_state.get("auth_user", "unknown"), "aws_connect",
-                  f"account={conn['account']}")
-        st.session_state["_aws_logged"] = True
-else:
-    st.sidebar.error("AWS: Not connected")
-    st.sidebar.caption("Configure connection above")
+
+# Logout / Disconnect
+col1, col2 = st.sidebar.columns(2)
+with col1:
+    if st.button("Logout", use_container_width=True):
+        log_event(st.session_state.get("auth_user", "unknown"), "logout")
+        logout()
+        st.session_state.pop("aws_connected", None)
+        st.rerun()
+with col2:
+    if st.button("Disconnect", use_container_width=True):
+        log_event(st.session_state.get("auth_user", "unknown"), "aws_disconnect")
+        for k in ["aws_access_key_id", "aws_secret_access_key", "aws_session_token", "aws_connected"]:
+            st.session_state.pop(k, None)
+        st.rerun()
 
 st.sidebar.divider()
 
