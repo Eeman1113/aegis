@@ -10,7 +10,11 @@ import streamlit as st
 
 
 def _get_password_hash() -> str | None:
-    return os.environ.get("APP_PASSWORD_HASH")
+    # Streamlit Community Cloud uses st.secrets; fall back to env var
+    try:
+        return st.secrets["APP_PASSWORD_HASH"]
+    except (KeyError, FileNotFoundError):
+        return os.environ.get("APP_PASSWORD_HASH")
 
 
 def check_login() -> bool:
