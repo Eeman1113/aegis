@@ -128,25 +128,25 @@ st.divider()
 log_event(st.session_state.get("auth_user", "unknown"), "page_view", f"page={page}")
 
 if page == "Security Dashboard":
-    from pages.security_dashboard import render
+    from views.security_dashboard import render
     render()
 
 elif page == "Regression Testing":
-    from pages.regression_testing import render
+    from views.regression_testing import render
     render()
 
 elif page == "AWS Environment":
-    from pages.aws_environment import render
+    from views.aws_environment import render
     render()
 
 elif page == "Customer Environments":
-    from pages.customer_environments import render
+    from views.customer_environments import render
     render()
 
 elif page == "Compliance":
-    from pages.compliance import render
+    from views.compliance import render
     render()
 
 elif page == "Reports":
-    from pages.reports import render
+    from views.reports import render
     render()
